@@ -1,0 +1,6 @@
+#!/bin/sh
+/sbin/ip link set ens3 up
+/sbin/udhcpc -i ens3 -v
+/usr/sbin/ntpd -p pool.ntp.org
+/sbin/hwclock -w
+/bin/login
