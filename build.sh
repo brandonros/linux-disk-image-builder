@@ -70,7 +70,7 @@ unmount_partitions() {
 
 prepare_efi_partition() {
     mkdir -p $efi_mount_path/EFI/BOOT
-    cp ./assets/refind_x64-0.14.0.2.efi $efi_mount_path/EFI/BOOT/bootx64.efi
+    cp ./assets/refind_x64.efi-0.14.0.2 $efi_mount_path/EFI/BOOT/bootx64.efi
     cp ./assets/vmlinuz-6.1.0-15-amd64 $efi_mount_path/EFI/BOOT/vmlinuz
     cp ./assets/initrd.img-6.1.0-15-amd64 $efi_mount_path/EFI/BOOT/initrd.img
     cp ./config/refind.conf $efi_mount_path/EFI/BOOT/refind.conf
