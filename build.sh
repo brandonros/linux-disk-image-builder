@@ -8,6 +8,7 @@ ext4_partition_filename='/tmp/ext4_partition.img'
 disk_filename='/tmp/disk.raw'
 ext4_mount_path='/tmp/ext4'
 efi_mount_path='/tmp/fat32'
+target_architecture='aarch64'
 # TODO: do not assume 2048mb disk/do not hardcode these/get them from gdisk somehow?
 disk_size_mb=2048
 efi_partition_size_mb=500
@@ -32,9 +33,15 @@ create_drive_file() {
 
 partition_drive_file() {
     # ef00 = EFI System Partition
-    # 8304 = Linux root (x86-64)
     efi_system_partition_type='ef00'
-    ext4_partition_type='8304'
+    if [ "$target_architecture" = "aarch64" ]
+    then
+        # 8305 = Linux root (ARM64)
+        ext4_partition_type='8305'
+    else
+        # 8304 = Linux root (x86-64)
+        ext4_partition_type='8304'
+    fi
     echo -e "o\ny\nn\n\n\n+${efi_partition_size_mb}M\n${efi_system_partition_type}\nn\n\n\n\n${ext4_partition_type}\nw\ny\n" | gdisk $disk_filename
 }
 
@@ -70,10 +77,18 @@ unmount_partitions() {
 
 prepare_efi_partition() {
     mkdir -p $efi_mount_path/EFI/BOOT
-    cp ./assets/refind_x64.efi-0.14.0.2 $efi_mount_path/EFI/BOOT/bootx64.efi
-    cp ./assets/vmlinuz-6.1.0-15-amd64 $efi_mount_path/EFI/BOOT/vmlinuz
-    cp ./assets/initrd.img-6.1.0-15-amd64 $efi_mount_path/EFI/BOOT/initrd.img
-    cp ./config/refind.conf $efi_mount_path/EFI/BOOT/refind.conf
+    if [ "$target_architecture" = "aarch64" ]
+    then
+        cp ./assets/aarch64/refind_aa64.efi-0.14.0.2 $efi_mount_path/EFI/BOOT/bootaa64.efi
+        cp ./assets/aarch64/vmlinuz-6.1.0-17-cloud-arm64 $efi_mount_path/EFI/BOOT/vmlinuz # from debian cloud image
+        cp ./assets/aarch64/initrd.img-6.1.0-17-cloud-arm64 $efi_mount_path/EFI/BOOT/initrd # from debian cloud image
+        cp ./config/refind-aarch64.conf $efi_mount_path/EFI/BOOT/refind.conf        
+    else
+        cp ./assets/amd64/refind_x64.efi-0.14.0.2 $efi_mount_path/EFI/BOOT/bootx64.efi
+        cp ./assets/amd64/vmlinuz-6.1.0-15-amd64 $efi_mount_path/EFI/BOOT/vmlinuz # from debian live cd
+        cp ./assets/amd64/initrd.img-6.1.0-15-amd64 $efi_mount_path/EFI/BOOT/initrd # from debian live cd
+        cp ./config/refind-amd64.conf $efi_mount_path/EFI/BOOT/refind.conf
+    fi
 }
 
 prepare_root_partition() {
@@ -96,7 +111,12 @@ prepare_root_partition() {
     mkdir $ext4_mount_path/usr/share/udhcpc
     mkdir $ext4_mount_path/var
     # rsync because can not use cp due to could not copy extended attributes error with FUSE
-    rsync -aP ./assets/busybox-1.35.0-x86_64-linux-musl $ext4_mount_path/bin/busybox
+    if [ "$target_architecture" = "aarch64" ]
+    then
+        rsync -aP ./assets/aarch64/busybox-1.36.1-aarch64-linux-musl $ext4_mount_path/bin/busybox
+    else
+        rsync -aP ./assets/amd64/busybox-1.35.0-x86_64-linux-musl $ext4_mount_path/bin/busybox
+    fi
     rsync -aP ./config/fstab $ext4_mount_path/etc/fstab
     rsync -aP ./config/hostname $ext4_mount_path/etc/hostname
     rsync -aP ./config/hosts $ext4_mount_path/etc/hosts
@@ -136,15 +156,31 @@ cleanup() {
 }
 
 run_qemu() {
-    # not sure why brew qemu doesn't ship with -x86_64-vars.fd by default
-    cp /opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-i386-vars.fd /opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-x86_64-vars.fd
-    qemu-system-x86_64 \
-        -m 1024 \
-        -drive if=pflash,format=raw,unit=0,readonly=on,file=/opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-x86_64-code.fd \
-        -drive if=pflash,format=raw,unit=1,file=/opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-x86_64-vars.fd \
-        -drive file=$disk_filename,format=raw \
-        -nic user,model=virtio-net-pci \
-        -nographic
+    if [ "$target_architecture" = "aarch64" ]
+    then
+        # not sure why brew qemu doesn't ship with -aarch64-vars.fd by default
+        cp /opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-arm-vars.fd /opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-aarch64-vars.fd
+        qemu-system-aarch64 \
+            -M virt,highmem=off \
+            -accel hvf \
+            -cpu host \
+            -m 1024 \
+            -drive if=pflash,format=raw,unit=0,readonly=on,file=/opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-aarch64-code.fd \
+            -drive if=pflash,format=raw,unit=1,file=/opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-aarch64-vars.fd \
+            -drive file=$disk_filename,format=raw \
+            -nic user,model=virtio-net-pci \
+            -nographic
+    else
+        # not sure why brew qemu doesn't ship with -x86_64-vars.fd by default
+        cp /opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-i386-vars.fd /opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-x86_64-vars.fd
+        qemu-system-x86_64 \
+            -m 1024 \
+            -drive if=pflash,format=raw,unit=0,readonly=on,file=/opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-x86_64-code.fd \
+            -drive if=pflash,format=raw,unit=1,file=/opt/homebrew/Cellar/qemu/8.1.3_2/share/qemu/edk2-x86_64-vars.fd \
+            -drive file=$disk_filename,format=raw \
+            -nic user,model=virtio-net-pci \
+            -nographic
+    fi
 }
 
 unmount_partitions

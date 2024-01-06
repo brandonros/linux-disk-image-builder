@@ -1,6 +1,13 @@
 #!/bin/sh
-/sbin/ip link set ens3 up
-/sbin/udhcpc -i ens3 -v
+
+MACHINE_TYPE=$(uname -m)
+if [ "$MACHINE_TYPE" = "aarch64" ]; then
+   INTERFACE_NAME='enp0s1'
+else
+    INTERFACE_NAME='ens3'
+fi
+/sbin/ip link set $INTERFACE_NAME up
+/sbin/udhcpc -i $INTERFACE_NAME -v
 /usr/sbin/ntpd -p pool.ntp.org
 /sbin/hwclock -w
 /bin/login

@@ -5,6 +5,7 @@ Build a bootable GPT Linux disk image from Mac OS X
 
 * fuse-t + fuse-ext2 (filesystem in userspace)
 * Busybox (shell / userspace)
+* musl (libc)
 * Linux (kernel)
 * rEFInd (bootloader)
 
